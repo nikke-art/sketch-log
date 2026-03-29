@@ -70,6 +70,11 @@
   .cal-day.has-entry{background:var(--mint-light);color:var(--mint-dark);font-weight:400;}
   .cal-day.has-entry.today{background:var(--mint-dark);color:var(--white);border-color:var(--mint-dark);}
   .cal-day:not(.empty):not(.has-entry):hover{background:var(--paper-2);}
+
+  /* 件数ドット */
+  .cal-day .dots{position:absolute;bottom:3px;left:0;right:0;display:flex;justify-content:center;gap:2px;}
+  .cal-day .dot{width:4px;height:4px;border-radius:50%;background:var(--mint-dark);}
+  .cal-day.has-entry.today .dot{background:var(--white);}
   /* タップで登録できる日（エントリーなし）のホバー */
   .cal-day.tappable:active{background:var(--paper-3);}
 
@@ -227,6 +232,16 @@
   <button class="fab" id="fab-btn" onclick="onFab()">＋</button>
 </div>
 
+<!-- 同日一覧モーダル -->
+<div class="modal-backdrop" id="day-modal">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle" onclick="closeModal('day-modal')"></div>
+    <div class="modal-title" id="day-modal-title"></div>
+    <div id="day-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <button class="btn-save" style="margin-top:12px" id="day-add-btn" onclick="addFromDay()">この日に追加 ＋</button>
+  </div>
+</div>
+
 <!-- 記録追加/編集 -->
 <div class="modal-backdrop" id="add-modal">
   <div class="modal" onclick="event.stopPropagation()">
@@ -359,9 +374,6 @@ function renderCalendar(){
   const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   document.getElementById('cal-month-label').innerHTML=`${y}<span>${mn[m]}</span>`;
 
-  const dated=new Set(
-    entries.filter(e=>{const d=new Date(e.date);return d.getFullYear()===y&&d.getMonth()===m;}).map(e=>e.date)
-  );
   const grid=document.getElementById('cal-grid');
   grid.innerHTML='';
   ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d=>{
@@ -371,21 +383,25 @@ function renderCalendar(){
   for(let i=0;i<first;i++){const el=document.createElement('div');el.className='cal-day empty';grid.appendChild(el);}
   for(let d=1;d<=days;d++){
     const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayEntries=entries.filter(x=>x.date===ds);
     const el=document.createElement('div');
     el.className='cal-day';
     if(ds===today) el.classList.add('today');
-    if(dated.has(ds)){
+    if(dayEntries.length>0){
       el.classList.add('has-entry');
-      // 記録あり → タップで詳細
-      el.addEventListener('click',()=>{
-        const es=entries.filter(x=>x.date===ds);
-        if(es.length) openDetail(es[es.length-1].id);
-      });
+      // 件数ドット（最大3）
+      const dotsEl=document.createElement('div');
+      dotsEl.className='dots';
+      const dotCount=Math.min(dayEntries.length,3);
+      for(let i=0;i<dotCount;i++){
+        const dot=document.createElement('div');dot.className='dot';dotsEl.appendChild(dot);
+      }
+      el.addEventListener('click',()=>openDayModal(ds,dayEntries));
+      el.appendChild(dotsEl);
     } else {
-      // 記録なし → タップでその日付で登録フォームを開く
-      el.addEventListener('click',()=>{ openAdd(ds); });
+      el.addEventListener('click',()=>openAdd(ds));
     }
-    el.textContent=d;
+    el.appendChild(document.createTextNode(d));
     grid.appendChild(el);
   }
   renderStats();
@@ -448,6 +464,31 @@ function renderIdeas(){
       </div>
     </div>`;
   }).join(''):`<div class="empty-state"><div class="icon">💡</div><p>描きたいものを<br>貯めておこう</p></div>`;
+}
+
+// 同日一覧モーダル
+let currentDayStr=null;
+function openDayModal(ds, dayEntries){
+  currentDayStr=ds;
+  document.getElementById('day-modal-title').textContent=ds + ' — ' + dayEntries.length + '件';
+  document.getElementById('day-list').innerHTML=dayEntries.map(e=>{
+    const thumb=e.image?`<img src="${e.image}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0">`:`<div style="width:52px;height:52px;border-radius:8px;background:var(--mint-light);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🖼</div>`;
+    const tags=(e.tags||[]).map(t=>`<span class="tag ${t}">${t}</span>`).join('');
+    return `<div class="entry-card" onclick="closeModal('day-modal');openDetail('${e.id}')">
+      ${thumb}
+      <div class="entry-body">
+        <div class="entry-memo">${escHTML(e.memo||'—')}</div>
+        <div class="entry-tags">${tags}</div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('day-modal').classList.add('open');
+}
+
+function addFromDay(){
+  const ds=currentDayStr;
+  closeModal('day-modal');
+  openAdd(ds);
 }
 
 // 追加フォームを開く（dateStr省略時は今日）
